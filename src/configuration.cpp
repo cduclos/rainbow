@@ -1,8 +1,8 @@
 #include "configuration.h"
 
-#include <QtCore/QFile>
+#include <QtCore/QRegExp>
 #include <QtXml/QXmlStreamReader>
-
+#include <QDebug>
 #include "log.h"
 #include "appfolder.h"
 #include "webfolder.h"
@@ -74,13 +74,23 @@ bool Configuration::parse()
                     AppFolder *folder = new AppFolder();
                     folder->setHandler(handler);
                     folder->setName(name);
-                    m_folders[name] = folder;
+                    if (folder->load())
+                        m_folders[name] = folder;
+                    else {
+                        log->entry(Log::LogLevelCritical, "could not load folder, skipping it");
+                        delete folder;
+                    }
                 } else if (type == "web") {
                     log->entry(Log::LogLevelDebug, "creating web folder");
                     WebFolder *folder = new WebFolder();
                     folder->setHandler(handler);
                     folder->setName(name);
-                    m_folders[name] = folder;
+                    if (folder->load())
+                        m_folders[name] = folder;
+                    else {
+                        log->entry(Log::LogLevelCritical, "could not load folder, skipping it");
+                        delete folder;
+                    }
                 } else {
                     log->entry(Log::LogLevelCritical, "unknown type of handler");
                 }
@@ -98,4 +108,98 @@ bool Configuration::parse()
         log->entry(Log::LogLevelCritical, "problems found while reading configuration file");
     }
     return true;
+}
+
+bool Configuration::hasPath(const QString &path) const
+{
+    Log *log = Log::instance();
+    /*
+     * We receive a full path and we have to find the real path.
+     * This is a complicated operation but we will take the path of least resistance.
+     * We assume that the root folder does not have any subfolders, therefore any
+     * paths with more than one slash is a different folder.
+     */
+    if (path.at(0) != '/') {
+        log->entry(Log::LogLevelCritical, "path does not start with /, malformed");
+        return false;
+    }
+
+    /* We try our luck, in the case of apps we will get a direct hit here. */
+    if (m_folders.contains(path)) {
+        log->entry(Log::LogLevelDebug, "direct hit");
+        return true;
+    }
+    /* We try the first part of the path */
+    log->entry(Log::LogLevelDebug, path);
+    QRegExp expression("(/\\w+)/?");
+    if (expression.indexIn(path) != -1) {
+        /* Something was captured */
+        QString prefix = expression.cap();
+        /* If it ends with a '/' then it needs to be handled by the respective handler */
+        if (prefix.endsWith('/')) {
+            int position = prefix.lastIndexOf('/');
+            QString corrected = prefix.remove(position, 1);
+            WebFolder *folder = static_cast<WebFolder *>(m_folders[corrected]);
+            return folder->has(path);
+        } else {
+            /* This is a file or folder in our root folder */
+            WebFolder *folder = static_cast<WebFolder *>(m_folders["/"]);
+            return folder->has(path);
+        }
+    } else {
+        /* The only possible valid case for this is the root folder itself */
+        if (path != "/") {
+            log->entry(Log::LogLevelCritical, "path was not understood");
+            return false;
+        }
+    }
+    return true;
+}
+
+QByteArray *Configuration::file(const QString &path) const
+{
+    /*
+     * This function does not handle errors. It is assumed that hasPath was called
+     * before calling this function.
+     */
+    if (path == "/") {
+        WebFolder *folder = static_cast<WebFolder *>(m_folders["/"]);
+        return folder->listing("/");
+    }
+    QRegExp expression("(/\\w+)/?");
+    expression.indexIn(path);
+    QString prefix = expression.cap();
+    if (prefix.endsWith('/')) {
+        int position = prefix.lastIndexOf('/');
+        QString corrected = prefix.remove(position, 1);
+        WebFolder *folder = static_cast<WebFolder *>(m_folders[corrected]);
+        return folder->file(path);
+    }
+    /* This is a file or folder in our root folder */
+    WebFolder *folder = static_cast<WebFolder *>(m_folders["/"]);
+    return folder->file(path);
+}
+
+QByteArray *Configuration::info(const QString &path) const
+{
+    /*
+     * This function does not handle errors. It is assumed that hasPath was called
+     * before calling this function.
+     */
+    if (path == "/") {
+        WebFolder *folder = static_cast<WebFolder *>(m_folders["/"]);
+        return folder->listing("/");
+    }
+    QRegExp expression("(/\\w+)/?");
+    expression.indexIn(path);
+    QString prefix = expression.cap();
+    if (prefix.endsWith('/')) {
+        int position = prefix.lastIndexOf('/');
+        QString corrected = prefix.remove(position, 1);
+        WebFolder *folder = static_cast<WebFolder *>(m_folders[corrected]);
+        return folder->info(path);
+    }
+    /* This is a file or folder in our root folder */
+    WebFolder *folder = static_cast<WebFolder *>(m_folders["/"]);
+    return folder->info(path);
 }

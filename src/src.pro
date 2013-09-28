@@ -8,7 +8,7 @@ QT       += core network
 
 QT       -= gui
 
-TARGET = src
+TARGET = rainbow
 CONFIG   += console
 CONFIG   -= app_bundle
 

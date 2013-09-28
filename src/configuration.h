@@ -2,6 +2,7 @@
 #define CONFIGURATION_H
 
 #include <QtCore/QString>
+#include <QtCore/QByteArray>
 #include <QtCore/QHash>
 
 #include "webfolder.h"
@@ -18,6 +19,9 @@ public:
     void setConfigurationFile(const QString &configuration_file) { m_configurationFile = configuration_file; }
     bool parse();
     quint16 port() const { return m_port; }
+    bool hasPath(const QString &path) const;
+    QByteArray *file(const QString &path) const;
+    QByteArray *info(const QString &path) const;
 };
 
 #endif // CONFIGURATION_H

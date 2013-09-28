@@ -35,23 +35,22 @@ void Log::entry(LogLevel level, const QString &message)
         return;
     }
     QString currentTime = QDateTime::currentDateTime().toString(Qt::TextDate);
+    m_log->write(currentTime.toLatin1());
     switch (level)
     {
     case LogLevelDebug:
-        m_log->write(QByteArray("debug -- "));
+        m_log->write(QByteArray(" -- debug -- "));
         break;
     case LogLevelNormal:
-        m_log->write(QByteArray("normal -- "));
+        m_log->write(QByteArray(" -- normal -- "));
         break;
     case LogLevelCritical:
-        m_log->write(QByteArray("critical -- "));
+        m_log->write(QByteArray(" -- critical -- "));
         cerr << currentTime.toStdString() << " " << message.toStdString() << "\n";
         break;
     default:
         return;
     }
-    m_log->write(currentTime.toLatin1());
-    m_log->write(QByteArray(" -- "));
     m_log->write(message.toLatin1());
     m_log->write(QByteArray("\n"));
     m_log->flush();

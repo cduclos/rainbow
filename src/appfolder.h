@@ -7,6 +7,7 @@ class AppFolder : public Folder
 {
 public:
     AppFolder();
+    virtual bool load();
 };
 
 #endif // APPFOLDER_H

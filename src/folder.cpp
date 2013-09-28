@@ -1,6 +1,7 @@
 #include "folder.h"
 
-Folder::Folder()
+Folder::Folder(FolderType type) :
+    m_type(type)
 {
 }
 
