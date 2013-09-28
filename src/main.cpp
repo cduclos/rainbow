@@ -17,9 +17,7 @@ void usage()
 int main(int argc, char *argv[])
 {
     QCoreApplication *app = new QCoreApplication(argc, argv);
-    Log *log = Log::instance();
     char *configuration_file = NULL;
-
     int result = 0;
 
     while ((result = getopt(argc, argv, optstring)) != -1)
