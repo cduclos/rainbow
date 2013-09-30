@@ -13,6 +13,11 @@ class Configuration
     QHash<QString, Folder *> m_folders;
     QString m_configurationFile;
     quint16 m_port;
+    enum RequestType {
+        Info,
+        Content
+    };
+    QByteArray *request(const QString &path, RequestType type) const;
 public:
     Configuration();
     QString configurationFile() const { return m_configurationFile; }

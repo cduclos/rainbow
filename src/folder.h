@@ -4,11 +4,12 @@
 #include <QtCore/QString>
 class Folder
 {
-protected:
+public:
     enum FolderType {
         WEB
         , APP
     };
+protected:
     FolderType m_type;
     QString m_name;
     QString m_handler;
@@ -20,6 +21,7 @@ public:
     QString handler() const { return m_handler; }
     virtual void setHandler(const QString &handler) { m_handler = handler; }
     virtual bool load() { return false; }
+    FolderType type() const { return m_type; }
 };
 
 #endif // FOLDER_H

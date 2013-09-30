@@ -123,83 +123,176 @@ bool Configuration::hasPath(const QString &path) const
         log->entry(Log::LogLevelCritical, "path does not start with /, malformed");
         return false;
     }
+    /*
+     * Remove the final '/' so the matching is easier.
+     * This is a complicated task, in theory the path could contain "///",
+     * so it is not just removing the final '/'.
+     */
+    QRegExp filter("^(/\\w*)(/*\\w+)*");
+    QString filteredPath;
+    QString documentPath;
 
-    /* We try our luck, in the case of apps we will get a direct hit here. */
-    if (m_folders.contains(path)) {
-        log->entry(Log::LogLevelDebug, "direct hit");
-        return true;
-    }
-    /* We try the first part of the path */
-    log->entry(Log::LogLevelDebug, path);
-    QRegExp expression("(/\\w+)/?");
-    if (expression.indexIn(path) != -1) {
-        /* Something was captured */
-        QString prefix = expression.cap();
-        /* If it ends with a '/' then it needs to be handled by the respective handler */
-        if (prefix.endsWith('/')) {
-            int position = prefix.lastIndexOf('/');
-            QString corrected = prefix.remove(position, 1);
-            WebFolder *folder = static_cast<WebFolder *>(m_folders[corrected]);
-            return folder->has(path);
+    if (filter.indexIn(path) != -1) {
+        filteredPath = filter.cap(1);
+        documentPath = filter.cap(2);
+        /*
+         * We captured our initial path. We need to check if it is a root folder request
+         * or not.
+         */
+        if (documentPath.isEmpty()) {
+            log->entry(Log::LogLevelDebug, "request for a root level folder");
+            if (m_folders.contains(filteredPath)) {
+                log->entry(Log::LogLevelDebug, "root level folder found");
+                return true;
+            } else {
+                /* The last chance is a file on the root folder */
+                WebFolder *wf = static_cast<WebFolder *>(m_folders["/"]);
+                return wf->has(path);
+            }
         } else {
-            /* This is a file or folder in our root folder */
-            WebFolder *folder = static_cast<WebFolder *>(m_folders["/"]);
-            return folder->has(path);
-        }
-    } else {
-        /* The only possible valid case for this is the root folder itself */
-        if (path != "/") {
-            log->entry(Log::LogLevelCritical, "path was not understood");
-            return false;
+            /*
+             * It was not a root folder request.
+             * Find out if we have a proper handler.
+             */
+            if (m_folders.contains(filteredPath)) {
+                Folder *folder = m_folders[filteredPath];
+                if (folder->type() == Folder::WEB) {
+                    WebFolder *wf = static_cast<WebFolder *>(folder);
+                    return wf->has(path);
+                } else {
+                    /* Apps do not have files or folders, at least not in this design. */
+                    return true;
+                }
+            } else {
+                /* not found */
+                return false;
+            }
         }
     }
-    return true;
+    return false;
+}
+
+QByteArray *Configuration::request(const QString &path, RequestType type) const
+{
+    Log *log = Log::instance();
+    /*
+     * We receive a full path and we have to find the real path.
+     * This is a complicated operation but we will take the path of least resistance.
+     * We assume that the root folder does not have any subfolders, therefore any
+     * paths with more than one slash is a different folder.
+     */
+    QByteArray *response = new QByteArray();
+    if (path.at(0) != '/') {
+        log->entry(Log::LogLevelCritical, "path does not start with /, malformed");
+        return response;
+    }
+    /*
+     * Remove the final '/' so the matching is easier.
+     * This is a complicated task, in theory the path could contain "///",
+     * so it is not just removing the final '/'.
+     */
+    QRegExp filter("^(/\\w*)(/*\\w+)*");
+    QString filteredPath;
+    QString documentPath;
+    if (filter.indexIn(path) != -1) {
+        filteredPath = filter.cap(1);
+        documentPath = filter.cap(2);
+        /*
+         * We captured our initial path. We need to check if it is a root folder request
+         * or not.
+         */
+        if (documentPath.isEmpty()) {
+            log->entry(Log::LogLevelDebug, "request for a root level folder");
+            if (m_folders.contains(filteredPath)) {
+                log->entry(Log::LogLevelDebug, "root level folder found");
+                Folder *folder = m_folders[filteredPath];
+                if (folder->type() == Folder::WEB) {
+                    WebFolder *web = static_cast<WebFolder *>(folder);
+                    return web->listing(filteredPath);
+                } else {
+                    AppFolder *app = static_cast<AppFolder *>(folder);
+                    return response;
+                }
+            } else {
+                /* The last chance is a file on the root folder */
+                WebFolder *wf = static_cast<WebFolder *>(m_folders["/"]);
+                if (type == Content)
+                    return wf->file(path);
+                else
+                    return wf->info(path);
+            }
+        } else {
+            /*
+             * It was not a root folder request.
+             * Find out if we have a proper handler.
+             */
+            if (m_folders.contains(filteredPath)) {
+                Folder *folder = m_folders[filteredPath];
+                if (folder->type() == Folder::WEB) {
+                    WebFolder *wf = static_cast<WebFolder *>(folder);
+                    if (type == Info)
+                        return wf->info(documentPath);
+                    else
+                        return wf->file(documentPath);
+                } else {
+                    /* Apps do not have files or folders, at least not in this design. */
+                    return response;
+                }
+            } else {
+                /* not found */
+                return response;
+            }
+        }
+    }
+    return response;
 }
 
 QByteArray *Configuration::file(const QString &path) const
 {
-    /*
-     * This function does not handle errors. It is assumed that hasPath was called
-     * before calling this function.
-     */
-    if (path == "/") {
-        WebFolder *folder = static_cast<WebFolder *>(m_folders["/"]);
-        return folder->listing("/");
-    }
-    QRegExp expression("(/\\w+)/?");
-    expression.indexIn(path);
-    QString prefix = expression.cap();
-    if (prefix.endsWith('/')) {
-        int position = prefix.lastIndexOf('/');
-        QString corrected = prefix.remove(position, 1);
-        WebFolder *folder = static_cast<WebFolder *>(m_folders[corrected]);
-        return folder->file(path);
-    }
-    /* This is a file or folder in our root folder */
-    WebFolder *folder = static_cast<WebFolder *>(m_folders["/"]);
-    return folder->file(path);
+    return request(path, Content);
+//    /*
+//     * This function does not handle errors. It is assumed that hasPath was called
+//     * before calling this function.
+//     */
+//    if (path == "/") {
+//        WebFolder *folder = static_cast<WebFolder *>(m_folders["/"]);
+//        return folder->listing("/");
+//    }
+//    QRegExp expression("(/\\w+)/?");
+//    expression.indexIn(path);
+//    QString prefix = expression.cap();
+//    if (prefix.endsWith('/')) {
+//        int position = prefix.lastIndexOf('/');
+//        QString corrected = prefix.remove(position, 1);
+//        WebFolder *folder = static_cast<WebFolder *>(m_folders[corrected]);
+//        return folder->file(path);
+//    }
+//    /* This is a file or folder in our root folder */
+//    WebFolder *folder = static_cast<WebFolder *>(m_folders["/"]);
+//    return folder->file(path);
 }
 
 QByteArray *Configuration::info(const QString &path) const
 {
-    /*
-     * This function does not handle errors. It is assumed that hasPath was called
-     * before calling this function.
-     */
-    if (path == "/") {
-        WebFolder *folder = static_cast<WebFolder *>(m_folders["/"]);
-        return folder->listing("/");
-    }
-    QRegExp expression("(/\\w+)/?");
-    expression.indexIn(path);
-    QString prefix = expression.cap();
-    if (prefix.endsWith('/')) {
-        int position = prefix.lastIndexOf('/');
-        QString corrected = prefix.remove(position, 1);
-        WebFolder *folder = static_cast<WebFolder *>(m_folders[corrected]);
-        return folder->info(path);
-    }
-    /* This is a file or folder in our root folder */
-    WebFolder *folder = static_cast<WebFolder *>(m_folders["/"]);
-    return folder->info(path);
+//    /*
+//     * This function does not handle errors. It is assumed that hasPath was called
+//     * before calling this function.
+//     */
+//    if (path == "/") {
+//        WebFolder *folder = static_cast<WebFolder *>(m_folders["/"]);
+//        return folder->listing("/");
+//    }
+//    QRegExp expression("(/\\w+)/?");
+//    expression.indexIn(path);
+//    QString prefix = expression.cap();
+//    if (prefix.endsWith('/')) {
+//        int position = prefix.lastIndexOf('/');
+//        QString corrected = prefix.remove(position, 1);
+//        WebFolder *folder = static_cast<WebFolder *>(m_folders[corrected]);
+//        return folder->info(path);
+//    }
+//    /* This is a file or folder in our root folder */
+//    WebFolder *folder = static_cast<WebFolder *>(m_folders["/"]);
+//    return folder->info(path);
+    return request(path, Info);
 }
